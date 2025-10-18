@@ -13,7 +13,7 @@ import argparse
 
 
 class AnomalyDetector:
-    def __init__(self, app_name="AnomalyDetector"):
+    def __init__(self, app_name="MLLogProcessor"):
         # Initialize or reuse shared Spark session
         self.spark = get_spark(app_name)
 

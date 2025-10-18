@@ -27,6 +27,20 @@ def get_spark(app_name: str = "LogStreamApp") -> SparkSession:
     port_retries = os.getenv("SPARK_PORT_MAX_RETRIES", "64")
     local_ip = os.getenv("SPARK_LOCAL_IP", "127.0.0.1")
 
+    # --- VERSIONI PER SPARK 3.4.0 ---
+    DELTA_VERSION = "2.4.0"
+    SPARK_VERSION = "3.4.0" # Deve corrispondere alla tua versione di Spark
+    # --------------------------------
+
+    packages = [
+        # <<< RIGA CORRETTA >>>
+        f"io.delta:delta-core_2.12:{DELTA_VERSION}", # Era 'delta-spark_2.12'
+        # <<< FINE RIGA CORRETTA >>>
+        
+        f"org.apache.spark:spark-sql-kafka-0-10_2.12:{SPARK_VERSION}",
+        f"org.apache.kafka:kafka-clients:{SPARK_VERSION}", # Allineata per coerenza
+    ]
+
     builder = (
         SparkSession.builder.appName(app_name)
         .config("spark.master", "local[*]") 
@@ -40,11 +54,7 @@ def get_spark(app_name: str = "LogStreamApp") -> SparkSession:
         # Ensure Kafka source is available for Structured Streaming
         .config(
             "spark.jars.packages",
-            ",".join([
-                "io.delta:delta-spark_2.12:3.2.0",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
-                "org.apache.kafka:kafka-clients:3.5.0",
-            ]),
+            ",".join(packages),
         )
     )
 
@@ -64,4 +74,3 @@ def stop_spark():
             _spark_singleton.stop()
         finally:
             _spark_singleton = None
-

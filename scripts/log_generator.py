@@ -245,7 +245,7 @@ class LogGenerator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Log generator for ML training')
-    parser.add_argument('--kafka-servers', default='localhost:9092', help='Kafka bootstrap servers')
+    parser.add_argument('--kafka-servers', default='kafka:29092', help='Kafka bootstrap servers')
     parser.add_argument('--topic', default='web-logs', help='Kafka topic')
     parser.add_argument('--rate', type=int, default=10, help='Logs per second')
     parser.add_argument('--duration', type=int, help='Duration in seconds (optional)')

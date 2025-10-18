@@ -456,7 +456,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='ML-powered real-time log processing')
     parser.add_argument('--mode', choices=['stream', 'analytics', 'train'], 
                        default='stream', help='Execution mode')
-    parser.add_argument('--kafka-servers', default='localhost:9092', help='Kafka bootstrap servers')
+    parser.add_argument('--kafka-servers', default='kafka:29092', help='Kafka bootstrap servers')
     parser.add_argument('--topic', default='web-logs', help='Kafka topic')
     parser.add_argument('--output-path', default='/tmp/delta-lake/logs', help='Delta Lake output path for rule-based logs')
     parser.add_argument('--ml-output-path', default='/tmp/delta-lake/ml-predictions', help='Delta Lake output path for ML predictions')

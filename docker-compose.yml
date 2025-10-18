@@ -1,7 +1,32 @@
-version: '3.8'
-
+# Questo è il tuo docker-compose.yml completo e DEFINITIVO
 services:
-  # Zookeeper
+  
+  # ===============================================
+  # Servizio Spark e App Python
+  # ===============================================
+  spark-app:
+    build: .  # Usa il Dockerfile nella cartella corrente
+    container_name: spark-app
+    depends_on:
+      - kafka
+    networks:
+      - logstream-network
+    volumes:
+      # 1. Per il codice: Monta la cartella locale
+      - .:/app
+      
+      # 2. Per i dati: Usa volumi nominati per i permessi
+      - delta-data:/tmp/delta-lake
+      - checkpoint-data:/tmp/checkpoints
+      # 3. NUOVO VOLUME: Per salvare i modelli ML
+      - model-data:/tmp/ml_models
+    
+    command: >
+      tail -f /dev/null
+
+  # ===============================================
+  # Stack Kafka
+  # ===============================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
@@ -17,7 +42,6 @@ services:
     networks:
       - logstream-network
 
-  # Kafka
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     container_name: kafka
@@ -39,13 +63,12 @@ services:
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_DELETE_T OPIC_ENABLE: 'true'
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
       - logstream-network
 
-  # Kafka UI
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -61,11 +84,40 @@ services:
     networks:
       - logstream-network
 
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-setup
+    depends_on:
+      - kafka
+    networks:
+      - logstream-network
+    command: >
+      bash -c "
+        echo 'In attesa che Kafka (kafka:29092) sia pronto...' &&
+        cub kafka-ready -b kafka:29092 1 60 &&
+        echo 'Kafka è pronto! Creo il topic web-logs...' &&
+        kafka-topics --create --if-not-exists --topic web-logs --bootstrap-server kafka:29092 --replication-factor 1 --partitions 3 &&
+        echo 'Topic web-logs creato con successo.'
+      "
+
+# ===============================================
+# Definizione dei Volumi Nominati
+# ===============================================
 volumes:
+  # Volumi per Kafka
   zookeeper-data:
   zookeeper-logs:
   kafka-data:
+  
+  # Volumi per Spark (risolve i problemi di permessi)
+  delta-data:
+  checkpoint-data:
+  # NUOVO VOLUME:
+  model-data:
 
+# ===============================================
+# Definizione della Rete
+# ===============================================
 networks:
   logstream-network:
     driver: bridge

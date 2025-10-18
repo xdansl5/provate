@@ -34,7 +34,7 @@ class PipelineOrchestrator:
         """Load pipeline configuration"""
         default_config = {
             "kafka": {
-                "servers": "localhost:9092",
+                "servers": "kafka:29092",
                 "topic": "web-logs"
             },
             "delta_lake": {
@@ -53,7 +53,7 @@ class PipelineOrchestrator:
                 "retrain_interval_hours": 24
             },
             "monitoring": {
-                "kafka_ui_url": "http://localhost:8080"
+                "kafka_ui_url": "http://kafka-ui:8080"
             }
         }
         
@@ -88,7 +88,7 @@ class PipelineOrchestrator:
         
         # Check Kafka
         try:
-            response = requests.get(f"http://localhost:8080/api/clusters", timeout=5)
+            response = requests.get(f"http://kafka-ui:8080/api/clusters", timeout=5)
             services_status["kafka"] = response.status_code == 200
         except:
             services_status["kafka"] = False

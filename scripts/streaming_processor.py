@@ -273,7 +273,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Spark Structured Streaming processor for logs')
     parser.add_argument('--mode', choices=['stream', 'analytics', 'optimize'], 
                        default='stream', help='Execution mode')
-    parser.add_argument('--kafka-servers', default='localhost:9092', help='Kafka bootstrap servers')
+    parser.add_argument('--kafka-servers', default='kafka:29092', help='Kafka bootstrap servers')
     parser.add_argument('--topic', default='web-logs', help='Kafka topic')
     parser.add_argument('--output-path', default='/tmp/delta-lake/logs', help='Delta Lake output path')
     parser.add_argument('--checkpoint-path', default='/tmp/checkpoints/logs', help='Checkpoint location')
