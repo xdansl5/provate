@@ -102,7 +102,7 @@ This design guarantees that all Spark-based components in the platform run on a 
 
 ### Prerequisites
 
-  - Node.js 18+ and npm
+  - Node.js 22+ and npm
   - Docker & Docker Compose (to start Kafka and related services)
 
 ### 1\. Clone the repository
@@ -148,6 +148,8 @@ PORT=4000
 ```bash
 npm run server
 ```
+
+This starts the Express backend which connects to Kafka (using `KAFKA_BROKERS` and `KAFKA_TOPIC` from your `.env`) and serves the SSE stream and API endpoints used by the UI. The backend expects the Kafka topic `web-logs` to already exist; if the topic is missing the server may log connection errors or fail to stream updates. Create the topic in your Kafka cluster (or enable topic auto-creation) before running the server.
 
 ### 5\. Start the frontend app (optional)
 
@@ -302,3 +304,46 @@ docker-compose exec spark-app python3 /app/scripts/anomaly_detector.py --mode an
 ```bash
 docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode optimize --output-path /tmp/delta-lake/logs
 ```
+
+## Troubleshooting
+
+### Connectivity Issues
+
+1.  **Kafka unreachable**: Ensure Kafka runs on `localhost:9092`.
+2.  **Spark unavailable**: Ensure Spark is active on `localhost:7077`.
+3.  **Delta Lake inaccessible**: Verify permissions and configuration.
+
+### Debug
+
+  - Check server logs: `npm run server`
+  - Verify SSE: `curl http://localhost:4000/health`
+  - Test APIs: `curl http://localhost:4000/api/metrics`
+
+## Metrics and performance
+
+The platform monitors in real-time:
+
+  - **Throughput**: Events processed per second
+  - **Latency**: Average response time
+  - **Error Rate**: Error percentage
+  - **Active Sessions**: Active user sessions
+  - **Data Processed**: Volume processed
+
+## Contributing
+
+1.  Fork the repository
+2.  Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push the branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
+
+## Support
+
+For support and questions:
+
+  - Open a GitHub issue
+  - Contact the project maintainer
