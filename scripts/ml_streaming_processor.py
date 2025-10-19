@@ -389,64 +389,67 @@ class MLLogProcessor:
     # ------------------------------
     def run_ml_analytics(self, ml_logs_path="/tmp/delta-lake/logs"):
         """Runs analytics queries on enriched logs to summarize anomalies and traffic patterns."""
-        logger.info(f"Running ML analytics on: {ml_logs_path}")
-        logs_df = self.spark.read.format("delta").load(ml_logs_path)
-        logs_df.printSchema()
-        logs_df.show(5)
+        from pyspark.sql.functions import count, sum, avg, round, when, desc, col
+        
+        try:
+            # Load predictions from Delta Lake
+            predictions_df = self.spark.read.format("delta").load(ml_logs_path)
+            
+            print("\n=== ANOMALY DETECTION RESULTS ===")
+            
+            # Anomaly summary by type
+            anomaly_summary = predictions_df \
+                .filter(col("is_anomaly") == True) \
+                .groupBy("anomaly_type") \
+                .agg(
+                    count("*").alias("count"),
+                    round(avg("anomaly_score"), 2).alias("avg_score")
+                ) \
+                .orderBy(desc("count"))
+            
+            print("\nANOMALY DISTRIBUTION:")
+            anomaly_summary.show()
+            
+            # Detection method statistics
+            detection_stats = predictions_df \
+                .groupBy("detection_method") \
+                .agg(
+                    count("*").alias("total_predictions"),
+                    sum(when(col("is_anomaly"), 1).otherwise(0)).alias("anomalies_found"),
+                    round(avg("anomaly_score"), 2).alias("avg_anomaly_score")
+                )
+            
+            print("\nDETECTION METHOD STATISTICS:")
+            detection_stats.show()
+            
+            # Confidence level distribution
+            confidence_dist = predictions_df \
+                .filter(col("is_anomaly") == True) \
+                .groupBy("ml_confidence") \
+                .agg(count("*").alias("count")) \
+                .orderBy(desc("count"))
+            
+            print("\nCONFIDENCE LEVEL DISTRIBUTION:")
+            confidence_dist.show()
+            
+            # High-risk endpoints
+            high_risk_endpoints = predictions_df \
+                .filter(col("is_anomaly") == True) \
+                .groupBy("endpoint", "endpoint_category") \
+                .agg(
+                    count("*").alias("anomaly_count"),
+                    round(avg("anomaly_score"), 2).alias("avg_anomaly_score")
+                ) \
+                .orderBy(desc("anomaly_count")) \
+                .limit(10)
+            
+            print("\nTOP 10 HIGH-RISK ENDPOINTS:")
+            high_risk_endpoints.show()
+            
+        except Exception as e:
+            print(f"Error running ML analytics: {str(e)}")
+            return
 
-        logs_df.createOrReplaceTempView("logs")
-
-        logger.info("\n=== ANOMALY DETECTION RESULTS ===")
-        anomaly_summary = self.spark.sql("""
-            SELECT 
-                anomaly_type,
-                COUNT(*) as count,
-                AVG(anomaly_score) as avg_score,
-                COUNT(DISTINCT endpoint) as affected_endpoints
-            FROM (
-                SELECT 
-                    CASE 
-                        WHEN is_anomaly THEN 'ANOMALY'
-                        WHEN is_error THEN 'ERROR'
-                        ELSE 'NORMAL'
-                    END as anomaly_type,
-                    anomaly_score,
-                    endpoint
-                FROM logs
-                WHERE date >= current_date() - 1
-            )
-            GROUP BY anomaly_type
-            ORDER BY count DESC
-        """)
-        anomaly_summary.show()
-
-        logger.info("\n=== ML MODEL PERFORMANCE ===")
-        model_performance = self.spark.sql("""
-            SELECT 
-                ml_confidence,
-                COUNT(*) as predictions,
-                AVG(anomaly_score) as avg_score,
-                SUM(CASE WHEN is_anomaly THEN 1 ELSE 0 END) as anomalies_detected
-            FROM logs
-            WHERE date >= current_date() - 1
-            GROUP BY ml_confidence
-            ORDER BY predictions DESC
-        """)
-        model_performance.show()
-
-        logger.info("\n=== TRAFFIC PATTERNS BY TIME ===")
-        time_patterns = self.spark.sql("""
-            SELECT 
-                hour,
-                COUNT(*) as total_requests,
-                AVG(anomaly_score) as avg_anomaly_score,
-                SUM(CASE WHEN is_anomaly THEN 1 ELSE 0 END) as anomalies
-            FROM logs
-            WHERE date >= current_date() - 1
-            GROUP BY hour
-            ORDER BY hour
-        """)
-        time_patterns.show()
 
 
 # ------------------------------

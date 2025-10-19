@@ -200,58 +200,76 @@ class LogStreamProcessor:
     # -------------------------------------------------------------------------
     def run_batch_analytics(self, delta_path="/tmp/delta-lake/logs"):
         """Executes batch analytics queries on stored Delta Lake data"""
+        from pyspark.sql.functions import count, sum, avg, round, countDistinct, expr, current_date, date_sub
+        
         print(f"📈 Running analytics on: {delta_path}")
         
         # Load logs from Delta table
         logs_df = self.spark.read.format("delta").load(delta_path)
         
-        # Register as a temporary SQL view for querying
-        logs_df.createOrReplaceTempView("logs")
-        
-        # Example analytics queries:
+        # Filter for last day's data
+        last_day_df = logs_df.filter(col("date") >= date_sub(current_date(), 1))
         
         # Top 10 most requested endpoints
         print("\n=== TOP 10 MOST REQUESTED ENDPOINTS ===")
-        top_endpoints = self.spark.sql("""
-            SELECT endpoint, COUNT(*) as request_count
-            FROM logs 
-            WHERE date >= current_date() - 1
-            GROUP BY endpoint
-            ORDER BY request_count DESC
-            LIMIT 10
-        """)
+        top_endpoints = last_day_df.groupBy("endpoint") \
+            .agg(count("*").alias("request_count")) \
+            .orderBy(col("request_count").desc()) \
+            .limit(10)
         top_endpoints.show()
         
         # Error rate and performance per hour
         print("\n=== ERRORS PER HOUR ===")
-        errors_by_hour = self.spark.sql("""
-            SELECT date, hour, 
-                   COUNT(*) as total_requests,
-                   SUM(CASE WHEN is_error THEN 1 ELSE 0 END) as error_count,
-                   ROUND(AVG(response_time), 2) as avg_response_time
-            FROM logs 
-            WHERE date >= current_date() - 1
-            GROUP BY date, hour
-            ORDER BY date DESC, hour DESC
-        """)
+        errors_by_hour = last_day_df.groupBy("date", "hour") \
+            .agg(
+                count("*").alias("total_requests"),
+                sum(expr("CASE WHEN is_error THEN 1 ELSE 0 END")).alias("error_count"),
+                round(avg("response_time"), 2).alias("avg_response_time")
+            ) \
+            .orderBy(col("date").desc(), col("hour").desc())
         errors_by_hour.show()
         
         # Unique user and session statistics
         print("\n=== USER STATISTICS ===")
-        user_stats = self.spark.sql("""
-            SELECT 
-                COUNT(DISTINCT user_id) as unique_users,
-                COUNT(DISTINCT session_id) as unique_sessions,
-                COUNT(DISTINCT ip) as unique_ips
-            FROM logs 
-            WHERE date >= current_date() - 1 AND user_id IS NOT NULL
-        """)
+        user_stats = last_day_df.filter(col("user_id").isNotNull()) \
+            .agg(
+                countDistinct("user_id").alias("unique_users"),
+                countDistinct("session_id").alias("unique_sessions"),
+                countDistinct("ip").alias("unique_ips")
+            )
         user_stats.show()
 
     # -------------------------------------------------------------------------
     # DELTA TABLE OPTIMIZATION
     # -------------------------------------------------------------------------
-    def optimize_delta_table(self, delta_path="tmp/delta-lake/logs"):
+    def optimize_delta_table(self, delta_path="/tmp/delta-lake/logs"):
+        """Optimizes Delta table by performing OPTIMIZE and VACUUM operations"""
+        from delta.tables import DeltaTable
+        
+        try:
+            print(f"Optimizing Delta table at: {delta_path}")
+            
+            # Check if the path exists and contains Delta table
+            if not DeltaTable.isDeltaTable(self.spark, delta_path):
+                print(f"No Delta table found at {delta_path}")
+                return
+            
+            # Get the Delta table
+            deltaTable = DeltaTable.forPath(self.spark, delta_path)
+            
+            # Run OPTIMIZE
+            print("Running OPTIMIZE...")
+            deltaTable.optimize().executeCompaction()
+            
+            # Run VACUUM (retain 168 hours/7 days of history)
+            print("Running VACUUM...")
+            deltaTable.vacuum(retentionHours=168)
+            
+            print("Delta table optimization completed successfully")
+        except Exception as e:
+            print(f"Error optimizing Delta table: {str(e)}")
+            raise
+        return True  # Indicate success
         """Optimizes Delta table for performance and storage cleanup"""
         print(f"Optimizing Delta table at: {delta_path}")
         

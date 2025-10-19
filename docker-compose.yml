@@ -1,28 +1,35 @@
-# Questo è il tuo docker-compose.yml completo e DEFINITIVO
+# This docker-compose.yml defines the complete multi-container environment
+# for the real-time log streaming and ML processing pipeline.
 services:
   
   spark-app:
-    build: .  # Usa il Dockerfile nella cartella corrente
+    # Build the image from the Dockerfile in the current directory.
+    build: .
     container_name: spark-app
     depends_on:
       - kafka
     networks:
       - logstream-network
     volumes:
-      # 1. Per il codice: Monta la cartella locale
+      # 1. Code: Mount the local directory for live code development.
+      #    Changes in the local folder will be reflected inside the container.
       - .:/app
       
-      # 2. Per i dati: Usa volumi nominati per i permessi
+      # 2. Data: Use named volumes for persistent data storage.
+      #    This avoids permission issues common with host-mounted volumes.
       - delta-data:/tmp/delta-lake
       - checkpoint-data:/tmp/checkpoints
-      # 3. NUOVO VOLUME: Per salvare i modelli ML
+      # 3. Models: Use a named volume to persist trained ML models.
       - model-data:/tmp/ml_models
     
+    # Keep the container running indefinitely.
+    # We will use 'docker exec' to manually run streaming, analytics, or training jobs.
     command: >
       tail -f /dev/null
 
   # ===============================================
-  # Stack Kafka
+  # Kafka Stack
+  # (Zookeeper, Kafka, Kafka-UI, Kafka-Setup)
   # ===============================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
@@ -33,6 +40,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    # Persist Zookeeper data and logs using named volumes.
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
@@ -46,12 +54,17 @@ services:
     depends_on:
       - zookeeper
     ports:
+      # Port for host machine access (e.g., local producer, Kafka-UI)
       - "9092:9092"
+      # Port for JMX monitoring
       - "9101:9101"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # Define listeners:
+      # - PLAINTEXT://kafka:29092 is for internal communication (e.g., Spark, Kafka-UI)
+      # - PLAINTEXT_HOST://localhost:9092 is for external communication (from the host)
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -59,8 +72,10 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
+      # Enable topic auto-creation and deletion for development flexibility.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_DELETE_T OPIC_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+    # Persist Kafka topic data.
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
@@ -76,12 +91,15 @@ services:
     restart: always
     environment:
       KAFKA_CLUSTERS_0_NAME: local
+      # Connect to Kafka using its internal listener name.
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
     networks:
       - logstream-network
 
   kafka-setup:
+    # This is a one-shot container that runs after Kafka is up.
+    # Its purpose is to create the 'web-logs' topic automatically.
     image: confluentinc/cp-kafka:7.4.0
     container_name: kafka-setup
     depends_on:
@@ -90,31 +108,36 @@ services:
       - logstream-network
     command: >
       bash -c "
-        echo 'In attesa che Kafka (kafka:29092) sia pronto...' &&
+        echo 'Waiting for Kafka (kafka:29092) to be ready...' &&
+        # Use the Confluent 'cub' utility to wait for Kafka to be available.
         cub kafka-ready -b kafka:29092 1 60 &&
-        echo 'Kafka è pronto! Creo il topic web-logs...' &&
+        echo 'Kafka is ready! Creating topic web-logs...' &&
+        # Create the 'web-logs' topic with 3 partitions and 1 replication factor.
         kafka-topics --create --if-not-exists --topic web-logs --bootstrap-server kafka:29092 --replication-factor 1 --partitions 3 &&
-        echo 'Topic web-logs creato con successo.'
+        echo 'Topic web-logs created successfully.'
       "
 
 # ===============================================
-# Definizione dei Volumi Nominati
+# Named Volume Definitions
 # ===============================================
+# Define all named volumes here for persistence.
 volumes:
-  # Volumi per Kafka
+  # Volumes for Kafka & Zookeeper
   zookeeper-data:
   zookeeper-logs:
   kafka-data:
   
-  # Volumi per Spark (risolve i problemi di permessi)
+  # Volumes for Spark (resolves container permission issues)
   delta-data:
   checkpoint-data:
-  # NUOVO VOLUME:
+  # For persisting ML models
   model-data:
 
 # ===============================================
-# Definizione della Rete
+# Network Definition
 # ===============================================
+# Define a custom bridge network to allow all
+# services to communicate using their container names.
 networks:
   logstream-network:
     driver: bridge

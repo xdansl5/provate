@@ -118,32 +118,31 @@ class AnomalyDetector:
         print("📈 Analyzing historical anomalies...")
         
         anomalies_df = self.spark.read.format("delta").load(anomalies_path)
-        anomalies_df.createOrReplaceTempView("anomalies")
-        
-        # Summarize anomalies by type
-        print("\n=== ANOMALY SUMMARY ===")
-        summary = self.spark.sql("""
-            SELECT anomaly_type, 
-                   COUNT(*) as occurrences,
-                   AVG(request_count) as avg_requests,
-                   AVG(error_rate) as avg_error_rate,
-                   AVG(avg_response_time) as avg_response_time
-            FROM anomalies
-            GROUP BY anomaly_type
-            ORDER BY occurrences DESC
-        """)
-        summary.show()
-        
-        # Identify top endpoints with the most anomalies
-        print("\n=== TOP ENDPOINTS WITH ANOMALIES ===")
-        top_endpoints = self.spark.sql("""
-            SELECT endpoint, anomaly_type, COUNT(*) as anomaly_count
-            FROM anomalies
-            GROUP BY endpoint, anomaly_type
-            ORDER BY anomaly_count DESC
-            LIMIT 10
-        """)
-        top_endpoints.show()
+
+        # Summarize anomalies by type using DataFrame API
+        try:
+            print("\n=== ANOMALY SUMMARY ===")
+            summary = anomalies_df.groupBy("anomaly_type") \
+                .agg(
+                    count("*").alias("occurrences"),
+                    round(avg("request_count"), 2).alias("avg_requests"),
+                    round(avg("error_rate"), 4).alias("avg_error_rate"),
+                    round(avg("avg_response_time"), 2).alias("avg_response_time")
+                ) \
+                .orderBy(col("occurrences").desc())
+            summary.show()
+
+            # Identify top endpoints with the most anomalies
+            print("\n=== TOP ENDPOINTS WITH ANOMALIES ===")
+            top_endpoints = anomalies_df.groupBy("endpoint", "anomaly_type") \
+                .agg(count("*").alias("anomaly_count")) \
+                .orderBy(col("anomaly_count").desc()) \
+                .limit(10)
+            top_endpoints.show()
+
+        except Exception as e:
+            print(f"Error analyzing historical anomalies: {e}")
+            raise
 
 
 if __name__ == "__main__":

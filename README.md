@@ -159,249 +159,146 @@ npm run dev
 
 ## Pipeline Configuration and Usage
 
-### 1\. Docker Setup
+### 1. Docker Setup
 
-The project uses `docker-compose.yml` to orchestrate Zookeeper, Kafka, and Kafka UI.  
+The project uses `docker-compose.yml` to orchestrate Zookeeper, Kafka, and Kafka UI.
 
-All automation scripts are located in the `/scripts` folder:  
-
-- **`setup_environment.sh`** – sets up the environment automatically.  
-- **`start_pipeline.sh`** – starts the pipeline.  
-
-With these scripts, you don't need to run Docker commands manually.
-
-
-### 2\. `setup_environment.sh`
-
-This script automates the initial setup. Run it once to:
-
-  * Create necessary data and checkpoint directories.
-  * Install Python dependencies from `requirements.txt`.
-  * Download and configure Apache Spark.
-  * Start the Docker services for Kafka and Zookeeper.
-  * Automatically create the `web-logs` topic in Kafka.
-
-Run the script from the terminal:
+To build the containers, use the following command:
 
 ```bash
-bash setup_environment.sh
+docker-compose build
 ```
 
-### 3\. `start_pipeline.sh`
+### 2. Pipeline Usage
 
-This is the main script to start the entire pipeline. It:
+The Docker setup has been enhanced to streamline the deployment process and improve service management. Key improvements include:
 
-  * Checks for Docker and Docker Compose availability.
-  * Starts the Kafka infrastructure services.
-  * Sets up the Python environment and creates required directories.
-  * Launches the main pipeline process in the background.
-  * Provides access information for monitoring.
-  * Includes a cleanup function to safely stop all processes with `Ctrl+C`.
+- **Simplified Configuration**: The `docker-compose.yml` file has been optimized for easier customization and scalability.
+- **Health Checks**: Added health checks for services to ensure they are running correctly before proceeding with operations.
+- **Resource Management**: Improved resource allocation settings to optimize performance and reduce overhead.
+- **Logging**: Enhanced logging capabilities for better monitoring and troubleshooting.
 
-Run the script from the terminal:
+These improvements aim to provide a more robust and user-friendly experience when working with the real-time data pipeline.
+
+### Starting the Pipeline
+
+To start the services, run the following command:
 
 ```bash
-bash start_pipeline.sh
+docker-compose up -d
 ```
 
+This command will start all the services defined in the `docker-compose.yml` file in detached mode.
 
-### A. Quick Start (recommended)
+Once the services are up and running, you can interact with Kafka and Zookeeper through their respective interfaces. For Kafka, you can use the command line tools or the Kafka UI provided by the Docker setup for monitoring and management.
 
-From the `scripts` directory:
+### 3. Stopping the Pipeline
+
+To stop the services, use the following command:
 
 ```bash
-pip install -r requirements.txt
-./setup_environment.sh
-python3 pipeline_orchestrator.py --action start
+docker-compose down
+```
+
+This will safely shut down all running containers and clean up resources.
+
+## Starting and Stopping the Pipeline
+
+To start the pipeline, use the following command:
+
+```bash
+docker-compose exec spark-app python3 /app/scripts/pipeline_orchestrator.py --action start
 ```
 
 This will:
 
-  - Start Kafka services with Docker Compose
-  - Create Delta/Checkpoint directories
-  - Train an anomaly detection model if not present
-  - Start the streaming processor, ML streaming processor, and anomaly detector
-  - Start the test log generator
+- Start Kafka services with Docker Compose
+- Create Delta/Checkpoint directories
+- Train an anomaly detection model if not present
+- Start the streaming processor, ML streaming processor, and anomaly detector
+- Start the test log generator
 
-To stop:
+## Running Components Individually
 
+1) Generate logs:
 ```bash
-python3 pipeline_orchestrator.py --action stop
+docker-compose exec spark-app python3 /app/scripts/log_generator.py --rate 10
 ```
 
-### B. Run components individually
+2) Process logs with streaming components:
 
-In `scripts/`:
-
+a) Start basic rule-based streaming:
 ```bash
-# 1) Generate logs
-python3 log_generator.py --rate 10
-
-# 2) Start rule-based streaming
-python3 streaming_processor.py --mode stream --output-path /tmp/delta-lake/logs --checkpoint-path /tmp/checkpoints/logs
-
-# 3) Start ML streaming (writes predictions separately)
-python3 ml_streaming_processor.py --mode stream --output-path /tmp/delta-lake/logs --ml-output-path /tmp/delta-lake/ml-predictions --checkpoint-path /tmp/checkpoints/logs
-
-# 4) Start anomaly detection
-python3 anomaly_detector.py --mode detect --input-path /tmp/delta-lake/logs --output-path /tmp/delta-lake/anomalies --checkpoint-path /tmp/checkpoints/anomalies
+docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode stream --kafka-servers kafka:29092 --topic web-logs
 ```
 
-### C. Analytics and maintenance
-
+b) Start ML-powered streaming:
 ```bash
-# Batch analytics on rule-based logs
-python3 streaming_processor.py --mode analytics --output-path /tmp/delta-lake/logs
-
-# ML analytics on predictions
-python3 ml_streaming_processor.py --mode analytics --output-path /tmp/delta-lake/ml-predictions
-
-# Analyze historical anomalies
-python3 anomaly_detector.py --mode analyze --output-path /tmp/delta-lake/anomalies
-
-# Optional: delta optimization
-python3 streaming_processor.py --mode optimize --output-path /tmp/delta-lake/logs
+docker-compose exec spark-app python3 /app/scripts/ml_streaming_processor.py --mode stream --kafka-servers kafka:29092 --topic web-logs
 ```
 
-### Python 3.11 Requirements
-
-This project **requires Python 3.11** to ensure compatibility with all libraries, especially `kafka-python`.
-
-If you are using **Python 3.12**, some libraries may not work correctly. In that case, make sure to update `pip`, `setuptools`, and `wheel`:
-
+c) Start anomaly detection:
 ```bash
-python3 -m ensurepip --upgrade
-python3 -m pip install --upgrade pip setuptools wheel
+docker-compose exec spark-app python3 /app/scripts/anomaly_detector.py --mode detect
 ```
-Recommendation: The safest approach is to create a virtual environment with Python 3.11 (see below) and install dependencies there, avoiding conflicts with the system Python.
 
-#### Creating a virtual environment with Python 3.11
+3) Run analytics and maintenance:
+
+a) Analyze historical logs:
 ```bash
-# Create the virtual environment
-python3.11 -m venv venv
-
-# Activate it
-source venv/bin/activate   # Linux/macOS
-venv\Scripts\activate      # Windows
-
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
+docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode analytics 
 ```
-This ensures the full pipeline (log generator, streaming, ML, anomaly detection) runs correctly without compatibility issues.
 
-### D. Spark configuration and ports
-
-The scripts use a shared Spark session per process to avoid multiple SparkContext errors and disable the Spark UI by default. You can override with:
-
+b) Run ML analytics:
 ```bash
-SPARK_UI_ENABLED=true SPARK_UI_PORT=4040 python3 ml_streaming_processor.py --mode stream
+docker-compose exec spark-app python3 /app/scripts/ml_streaming_processor.py --mode analytics 
 ```
 
-You can also increase port retries via `SPARK_PORT_MAX_RETRIES=64` and set `SPARK_LOCAL_IP`.
-
-## Main Dashboard
-
-### 1\. Main Dashboard
-
-  - **Metrics Grid**: Real-time metrics (events/sec, error rate, response time, etc.)
-  - **Analytics Charts**: Interactive charts for traffic and performance
-  - **Live Log Stream**: Real-time log stream from the pipeline
-
-### 2\. Query Interface
-
-  - **Spark SQL**: Run custom queries on Delta Lake data
-  - **Sample Queries**: Predefined queries for common analyses
-  - **Real-time Results**: Live-updating results
-
-### 3\. Monitoring
-
-  - **Connection Status**: Visual indicators of pipeline status
-  - **Anomaly Detection**: Automatic error and anomaly detection
-  - **Performance Metrics**: Real-time performance monitoring
-
-## Sample queries
-
-### Error Analysis
-
-```sql
-SELECT endpoint, count(*) as error_count,
-       avg(response_time) as avg_response_time
-FROM delta_lake.logs
-WHERE status >= 400 AND timestamp >= current_timestamp() - interval 1 hour
-GROUP BY endpoint
-ORDER BY error_count DESC
-LIMIT 5
+c) Analyze historical anomalies:
+```bash
+docker-compose exec spark-app python3 /app/scripts/anomaly_detector.py --mode analyze 
 ```
 
-### User Session Analysis
-
-```sql
-SELECT
-  user_id,
-  count(distinct session_id) as sessions,
-  count(*) as page_views,
-  sum(response_time) / count(*) as avg_session_time
-FROM delta_lake.logs
-WHERE timestamp >= current_date()
-GROUP BY user_id
-ORDER BY page_views DESC
-LIMIT 10
+d) Optimize Delta Lake tables:
+```bash
+docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode optimize
 ```
 
-### Anomaly Detection
+4) ML model management:
 
-```sql
-SELECT
-  endpoint, source, level,
-  count(*) as anomaly_count,
-  max(response_time) as max_response_time
-FROM delta_lake.logs
-WHERE (level = 'ERROR' OR response_time > 1000)
-  AND timestamp >= current_timestamp() - interval 30 minutes
-GROUP BY endpoint, source, level
-ORDER BY anomaly_count DESC
+Train a new anomaly detection model:
+```bash
+docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode stream --output-path /tmp/delta-lake/logs --checkpoint-path /tmp/checkpoints/logs
 ```
 
-## Troubleshooting
+3) Start ML streaming (writes predictions separately):
+```bash
+docker-compose exec spark-app python3 /app/scripts/ml_streaming_processor.py --mode stream --output-path /tmp/delta-lake/logs --ml-output-path /tmp/delta-lake/ml-predictions --checkpoint-path /tmp/checkpoints/logs
+```
 
-### Connectivity Issues
+4) Start anomaly detection:
+```bash
+docker-compose exec spark-app python3 /app/scripts/anomaly_detector.py --mode detect --input-path /tmp/delta-lake/logs --output-path /tmp/delta-lake/anomalies --checkpoint-path /tmp/checkpoints/anomalies
+```
 
-1.  **Kafka unreachable**: Ensure Kafka runs on `localhost:9092`.
-2.  **Spark unavailable**: Ensure Spark is active on `localhost:7077`.
-3.  **Delta Lake inaccessible**: Verify permissions and configuration.
+## Analytics and Maintenance
 
-### Debug
+- Batch analytics on rule-based logs:
+```bash
+docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode analytics --output-path /tmp/delta-lake/logs
+```
 
-  - Check server logs: `npm run server`
-  - Verify SSE: `curl http://localhost:4000/health`
-  - Test APIs: `curl http://localhost:4000/api/metrics`
+- ML analytics on predictions:
+```bash
+docker-compose exec spark-app python3 /app/scripts/ml_streaming_processor.py --mode analytics --output-path /tmp/delta-lake/ml-predictions 
+```
 
-## Metrics and performance
+- Analyze historical anomalies:
+```bash
+docker-compose exec spark-app python3 /app/scripts/anomaly_detector.py --mode analyze --output-path /tmp/delta-lake/anomalies
+```
 
-The platform monitors in real-time:
-
-  - **Throughput**: Events processed per second
-  - **Latency**: Average response time
-  - **Error Rate**: Error percentage
-  - **Active Sessions**: Active user sessions
-  - **Data Processed**: Volume processed
-
-## Contributing
-
-1.  Fork the repository
-2.  Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push the branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License. See `LICENSE` for details.
-
-## Support
-
-For support and questions:
-
-  - Open a GitHub issue
-  - Contact the project maintainer
+- Optional: delta optimization:
+```bash
+docker-compose exec spark-app python3 /app/scripts/streaming_processor.py --mode optimize --output-path /tmp/delta-lake/logs
+```
