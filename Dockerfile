@@ -1,5 +1,5 @@
 # Usiamo il tag v3.5.1 che è disponibile
-FROM apache/spark-py:latest
+FROM apache/spark-py:v3.4.0
 
 # 1. Passa temporaneamente a ROOT per avere i permessi
 USER root

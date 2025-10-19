@@ -1,9 +1,6 @@
 # Questo è il tuo docker-compose.yml completo e DEFINITIVO
 services:
   
-  # ===============================================
-  # Servizio Spark e App Python
-  # ===============================================
   spark-app:
     build: .  # Usa il Dockerfile nella cartella corrente
     container_name: spark-app
